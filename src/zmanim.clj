@@ -16,6 +16,16 @@
            (java.util TimeZone)
            (java.text SimpleDateFormat)))
 
+;; --------------------------------------------------------------------------------
+;; utils
+
+(defmacro make-shitot-fn
+  [shitots]
+  (let [arg 'cal#
+        rows (->> (reduce (fn [acc [k [t f]]]
+                            (assoc acc k `[~t (~(symbol f) ~arg)]))
+                          {} (eval shitots)))]
+    `(fn [~arg] ~rows)))
 
 ;; --------------------------------------------------------------------------------
 ;; Date utils
@@ -87,18 +97,19 @@
         max-length (->> title->times vals
                         (map #(count (first %)))
                         (apply max))]
-    (print (format "%s, %s\n" location (.format df1 sunrise)))
-    ;;(print (format "algorithm: %s\n" algorithm))
-    (doseq [[idx [k v]] title->times]
-      (print (format (str "%2d. %-" max-length "s %s\n")
-                     idx
-                     k
-                     (when v (.format df2 v)))))))
+    (str (format "%s, %s\n" location (.format df1 sunrise))
+         (format "algorithm: %s\n" algorithm)
+         (reduce (fn [acc [idx [k v]]]
+                   (str acc (format (str "%2d. %-" max-length "s %s\n")
+                                    idx
+                                    k
+                                    (when v (.format df2 v)))))
+                 "" title->times))))
 
 (defn- col-widths
   [titles]
   ;; The width for the day is added to the start of the vector
-  (conj (map #(max (count %) 9) titles) 6))
+  (into [6] (map #(max (count %) 9) titles)))
 
 (defn zmanim-table-row-title
   [{:keys [location sunrise title->times]}]
@@ -107,7 +118,7 @@
         lengths (col-widths titles)
         frmt-str (str/join "" (map #(str "%-" % "s ") lengths))]
     (str (format "%s, %s\n" location (.format tf sunrise))
-         (apply format frmt-str (conj titles "day"))
+         (apply format frmt-str (into ["day"] titles))
          "\n")))
 
 (defn zmanim-table-row
@@ -115,9 +126,8 @@
   (let [frmt-day (SimpleDateFormat. "MM-dd")
         frmt-time (SimpleDateFormat. "HH:mm:ss")
         day (.format frmt-day sunrise)
-        times (conj (->> title->times vals (map #(when (second %)
-                                                   (.format frmt-time (second %)))))
-                    day)
+        times (into [day] (->> title->times vals (map #(when (second %)
+                                                   (.format frmt-time (second %))))))
         lengths (->> title->times vals (map first) col-widths)
         frmt-str (str/join "" (map #(str "%-" % "s ") lengths))]
     (str (apply format frmt-str times) "\n")))
@@ -131,7 +141,6 @@
                       "" times-data)]
     (str title (str/join "" times))))
 
-
 ;; --------------------------------------------------------------------------------
 ;; Location specific data for Oslo
 
@@ -141,33 +150,34 @@
                     :elevation 0
                     :time-zone (TimeZone/getTimeZone "Europe/Oslo")})
 
-(defn shitot-oslo
+(defn- getTzaisGeonim8Point1Degrees
   [cal]
-  {
-   1 ["mishey.11°" (.getMisheyakir11Degrees cal)]
-   2 ["alot_72m" (.getAlos72 cal)]
-   3 ["sunrise" (.getSunrise cal)]
-   4 ["sof_zman_shma_G" (.getSofZmanShmaGRA cal)]
-   5 ["sof_zman_tfila_G" (.getSofZmanTfilaGRA cal)]
-   6 ["chatzos" (.getChatzos cal)]
-   7 ["mincha_g.30m" (.getMinchaGedola30Minutes cal)]
-   8 ["mincha_k.G" (.getMinchaKetana cal)]
-   9 ["plag_hamin.G" (.getPlagHamincha cal)]
-   10 ["candles_G" (.getCandleLighting cal)]
-   11 ["sunset" (.getSunset cal)]
-   12 ["tz.kr.shma_bh" (.getTzaisBaalHatanya cal)]
-   13 ["tz.motze_8.1°" (.getSunsetOffsetByDegrees cal (+ 8.1 AstronomicalCalendar/GEOMETRIC_ZENITH))]
-   ;;14 ["shaah_zmanis_16.1°" (.getShaahZmanis16Point1Degrees cal)]
+  (.getSunsetOffsetByDegrees cal (+ 8.1 AstronomicalCalendar/GEOMETRIC_ZENITH)))
+
+(def shitot-oslo
+  {1 ["mishey.11°" ".getMisheyakir11Degrees"]
+   2 ["alot_72m" ".getAlos72"]
+   3 ["sunrise" ".getSunrise"]
+   4 ["sof_zman_shma_G" ".getSofZmanShmaGRA"]
+   5 ["sof_zman_tfila_G" ".getSofZmanTfilaGRA"]
+   6 ["chatzos" ".getChatzos"]
+   7 ["mincha_g.30m" ".getMinchaGedola30Minutes"]
+   8 ["mincha_k.G" ".getMinchaKetana"]
+   9 ["plag_hamin.G" ".getPlagHamincha"]
+   10 ["candles_G" ".getCandleLighting"]
+   11 ["sunset" ".getSunset"]
+   12 ["tz.kr.shma_bh" ".getTzaisBaalHatanya"]
+   13 ["tz.motze_8.1°" "getTzaisGeonim8Point1Degrees"]
+   ;;14 ["shaah_zmanis_16.1°" ".getShaahZmanis16Point1Degrees"]
    })
 
-
 ;; --------------------------------------------------------------------------------
-;; sandbox
+;; run app
 
 ;; Table
 (comment
  (let [calendar (make-zmanim-cal-by-location (make-location location-oslo))
-       table (zmanim-table shitot-oslo
+       table (zmanim-table (make-shitot-fn shitot-oslo)
                            calendar
                            (all-days-by-year 2022))
        filename "/Users/mendel/Downloads/zmanim_oslo_2022.txt"]
@@ -176,21 +186,13 @@
    ))
 
 ;; Single day
-(comment
+(do
  (let [calendar (make-zmanim-cal-by-location (make-location location-oslo))]
-   ;;(present-key-val (get-times shitot-oslo calendar [2022 6 24]))
-   (present-key-val (get-times-data shitot-oslo calendar))
-   ))
+   ;;(present-key-val (get-times-data (make-shitot-fn shitot-oslo) calendar [2022 6 24]))
+   (print (present-key-val (get-times-data (make-shitot-fn shitot-oslo) calendar)))))
 
-
-
-
-
-
-
-
-
-
+;; --------------------------------------------------------------------------------
+;; sandbox
 
 ;; --------------------------------------------------------------------------------
 ;; misc
