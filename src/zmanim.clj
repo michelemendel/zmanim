@@ -186,7 +186,7 @@
    ))
 
 ;; Single day
-(do
+(comment
  (let [calendar (make-zmanim-cal-by-location (make-location location-oslo))]
    ;;(present-key-val (get-times-data (make-shitot-fn shitot-oslo) calendar [2022 6 24]))
    (print (present-key-val (get-times-data (make-shitot-fn shitot-oslo) calendar)))))
