@@ -1,8 +1,5 @@
 (ns zmanim
   "
-  Kosher Java
-  https://search.maven.org/artifact/com.kosherjava/zmanim
-
   Java-time
   https://github.com/dm3/clojure.java-time
   Java-time API
@@ -10,22 +7,10 @@
   "
   (:require [clojure.pprint :as pp]
             [clojure.string :as str]
-            [java-time :as jt])
-  (:import (com.kosherjava.zmanim ComplexZmanimCalendar AstronomicalCalendar)
-           (com.kosherjava.zmanim.util GeoLocation)
-           (java.util TimeZone)
+            [java-time :as jt]
+            [kosher-java :as k])
+  (:import (java.util TimeZone)
            (java.text SimpleDateFormat)))
-
-;; --------------------------------------------------------------------------------
-;; utils
-
-(defmacro make-shitot-fn
-  [shitots]
-  (let [arg 'cal#
-        rows (->> (reduce (fn [acc [k [t f]]]
-                            (assoc acc k `[~t (~(symbol f) ~arg)]))
-                          {} (eval shitots)))]
-    `(fn [~arg] ~rows)))
 
 ;; --------------------------------------------------------------------------------
 ;; Date utils
@@ -60,73 +45,49 @@
   (for [d (range 1 (inc (nof-day-in-month y m)))]
     [y m d]))
 
-;; --------------------------------------------------------------------------------
-;; Zmanim utils
-
-(defn make-location
-  [l]
-  (GeoLocation. (:locationName l) (:latitude l) (:longitude l) (:elevation l) (:time-zone l)))
-
-(defn make-zmanim-cal-by-location
-  [location]
-  (ComplexZmanimCalendar. location))
-
-(defn set-calendar-time
-  "Month is 1-based instead of zero, so don't use the built-in months, since they are zero-based"
-  [cal [year month day]]
-  (.set (.getCalendar cal) year (dec month) day))
-
-(defn get-times-data
-  ([shitot cal]
-   {:location (->> cal .getGeoLocation .getLocationName)
-    :algorithm (.getCalculatorName (.getAstronomicalCalculator cal))
-    :sunrise (.getSunrise cal)
-    :title->times (->> (shitot cal) (into (sorted-map)))})
-  ([shitot cal day]
-   (set-calendar-time cal day)
-   (get-times-data shitot cal)))
 
 ;; --------------------------------------------------------------------------------
 ;; Presentation utils
 
 ;;http://tutorials.jenkov.com/java-date-time/parsing-formatting-dates.html
 (defn present-key-val
-  [{:keys [algorithm location sunrise title->times]}]
-  (let [df1 (SimpleDateFormat. "EEEE yyyy-MM-dd Z z")
-        df2 (SimpleDateFormat. "HH:mm:ss")
+  [{:keys [algorithm location date hebrew-date title->times]}]
+  (let [frmt-day (SimpleDateFormat. "EEE yyyy-MM-dd")
+        frmt-time (SimpleDateFormat. "HH:mm:ss")
         max-length (->> title->times vals
                         (map #(count (first %)))
                         (apply max))]
-    (str (format "%s, %s\n" location (.format df1 sunrise))
+    (str (format "%s, %s, %s\n" location (k/frmt-full-heb-date hebrew-date) (.format frmt-day date))
          (format "algorithm: %s\n" algorithm)
          (reduce (fn [acc [idx [k v]]]
                    (str acc (format (str "%2d. %-" max-length "s %s\n")
                                     idx
                                     k
-                                    (when v (.format df2 v)))))
+                                    (when v (.format frmt-time v)))))
                  "" title->times))))
 
 (defn- col-widths
   [titles]
-  ;; The width for the day is added to the start of the vector
-  (into [6] (map #(max (count %) 9) titles)))
+  ;; The width for the day and heb-date is added to the start of the vector
+  (into [6 12] (map #(max (count %) 9) titles)))
 
 (defn zmanim-table-row-title
-  [{:keys [location sunrise title->times]}]
-  (let [tf (SimpleDateFormat. "yyyy Z z")
+  [{:keys [location date hebrew-date title->times]}]
+  (let [year (.format (SimpleDateFormat. "yyyy Z z") date)
+        heb-year (k/frmt-heb-year hebrew-date)
         titles (->> title->times vals (map first))
         lengths (col-widths titles)
         frmt-str (str/join "" (map #(str "%-" % "s ") lengths))]
-    (str (format "%s, %s\n" location (.format tf sunrise))
-         (apply format frmt-str (into ["day"] titles))
+    (str (format "%s, %s, %s\n" location heb-year year)
+         (apply format frmt-str (into ["date" "heb-date"] titles))
          "\n")))
 
 (defn zmanim-table-row
-  [{:keys [sunrise title->times]}]
+  [{:keys [date hebrew-date title->times]}]
   (let [frmt-day (SimpleDateFormat. "MM-dd")
         frmt-time (SimpleDateFormat. "HH:mm:ss")
-        day (.format frmt-day sunrise)
-        times (into [day] (->> title->times vals (map #(when (second %)
+        day (.format frmt-day date)
+        times (into [day (k/frmt-heb-month-day hebrew-date)] (->> title->times vals (map #(when (second %)
                                                    (.format frmt-time (second %))))))
         lengths (->> title->times vals (map first) col-widths)
         frmt-str (str/join "" (map #(str "%-" % "s ") lengths))]
@@ -134,7 +95,7 @@
 
 (defn zmanim-table
   [shitot calendar days]
-  (let [times-data (map #(get-times-data shitot calendar %) days)
+  (let [times-data (map #(k/get-times-data shitot calendar %) days)
         title (zmanim-table-row-title (first times-data))
         times (reduce (fn [acc time]
                         (str acc (zmanim-table-row time)))
@@ -150,75 +111,59 @@
                     :elevation 0
                     :time-zone (TimeZone/getTimeZone "Europe/Oslo")})
 
-(defn- getTzaisGeonim8Point1Degrees
-  [cal]
-  (.getSunsetOffsetByDegrees cal (+ 8.1 AstronomicalCalendar/GEOMETRIC_ZENITH)))
-
 (def shitot-oslo
-  {1 ["mishey.11°" ".getMisheyakir11Degrees"]
-   2 ["alot_72m" ".getAlos72"]
-   3 ["sunrise" ".getSunrise"]
-   4 ["sof_zman_shma_G" ".getSofZmanShmaGRA"]
-   5 ["sof_zman_tfila_G" ".getSofZmanTfilaGRA"]
-   6 ["chatzos" ".getChatzos"]
-   7 ["mincha_g.30m" ".getMinchaGedola30Minutes"]
-   8 ["mincha_k.G" ".getMinchaKetana"]
-   9 ["plag_hamin.G" ".getPlagHamincha"]
-   10 ["candles_G" ".getCandleLighting"]
-   11 ["sunset" ".getSunset"]
-   12 ["tz.kr.shma_bh" ".getTzaisBaalHatanya"]
-   13 ["tz.motze_8.1°" "getTzaisGeonim8Point1Degrees"]
-   ;;14 ["shaah_zmanis_16.1°" ".getShaahZmanis16Point1Degrees"]
-   })
+  {1 ["mishey.11°" k/misheyakir-11-deg]
+   2 ["alot_72m" k/alos-72-min]
+   3 ["sunrise" k/sunrise]
+   4 ["sof_zman_shma_G" k/sof-zman-shma-gra]
+   5 ["sof_zman_tfila_G" k/sof-zman-tfila-gra]
+   6 ["chatzos" k/chatzos ".getChatzos"]
+   7 ["mincha_g.30m" k/mincha-gedola-30-min]
+   8 ["mincha_k.G" k/mincha-ketana]
+   9 ["plag_hamin.G" k/plag-hamincha]
+   10 ["candles_G" k/candle-lighting]
+   11 ["sunset" k/sunset]
+   12 ["tz.kr.shma_bh" k/tzais-baal-hatanya]
+   13 ["tz.motze_8.1°" k/tzais-geonim-8-1-deg]})
+
+(def shitot-oslo-kaluach-vs-java
+  {1 ["mishey.10.2°.kl" k/misheyakir-10-2-deg]
+   2 ["mishey.11°" k/misheyakir-11-deg]
+   3 ["alot_16.1°-kl" k/alos-16-1-deg]
+   4 ["alot_72m" k/alos-72-min]
+   5 ["tz.motze_8.5°-kl" k/tzais-geonim-8-5-deg]
+   6 ["tz.motze_8.1°" k/tzais-geonim-8-1-deg]})
+
 
 ;; --------------------------------------------------------------------------------
 ;; run app
 
 ;; Table
 (comment
- (let [calendar (make-zmanim-cal-by-location (make-location location-oslo))
-       table (zmanim-table (make-shitot-fn shitot-oslo)
+ (let [calendar (k/make-zmanim-cal-by-location (k/make-location location-oslo))
+       year 2021
+       table (zmanim-table shitot-oslo
                            calendar
-                           (all-days-by-year 2022))
-       filename "/Users/mendel/Downloads/zmanim_oslo_2022.txt"]
+                           ;;todo mendel remove take
+                           (take 3) (all-days-by-year year))
+       filename (format "/Users/mendel/Downloads/zmanim_oslo_%s.txt" year)]
    (print table)
    ;;(spit filename table)
    ))
 
 ;; Single day
-(comment
- (let [calendar (make-zmanim-cal-by-location (make-location location-oslo))]
-   ;;(present-key-val (get-times-data (make-shitot-fn shitot-oslo) calendar [2022 6 24]))
-   (print (present-key-val (get-times-data (make-shitot-fn shitot-oslo) calendar)))))
+(do
+ (let [calendar (k/make-zmanim-cal-by-location (k/make-location location-oslo))]
+   ;;(print (present-key-val (k/get-times-data shitot-oslo calendar [2022 6 24])))
+   ;;(print (present-key-val (k/get-times-data shitot-oslo calendar)))
+   (k/get-times-data shitot-oslo calendar [2022 6 24])
+   ))
 
 ;; --------------------------------------------------------------------------------
 ;; sandbox
 
 ;; --------------------------------------------------------------------------------
 ;; misc
-
-(defn present-kaluach
-  [times]
-  (println "\nKaluach")
-  (println (:date times))
-  (doseq [[k v] (:times times)]
-    (print (format "%-40s %s\n" k v))))
-(def kaluach {:date "Fri Dec 24 2021, 20 Teves 5782"
-              :times (sorted-map "01. misheyakir (10.2°)" "7:41:32"
-                                 "02. alot (72 min)" "8:07:22"
-                                 "03. sunrise" "9:19:22"
-                                 "04. sof zman shma (GRA)" "10:48:02"
-                                 "05. sof zman tfila (GRA)" "11:17:35"
-                                 "06. chatzot" "12:16:41"
-                                 "07. mincha gedola" "12:31:27"
-                                 "09. plag hamincha" "14:37:03"
-                                 "10. candle lighting (18 min)" "14:55:59"
-                                 "11. sunset" "15:13:59"
-                                 "12. tzais geonim (8.5°)" "16:35:57"
-                                 )})
-;;(present-kaluach kaluach)
-
-
 
 ;; ----- Daf
 #_(let [daf (YomiCalculator/getDafYomiBavli (JewishCalendar.))]
