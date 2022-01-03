@@ -57,6 +57,7 @@
 
 (defn misheyakir-10-2-deg [cal] (.getMisheyakir10Point2Degrees cal))
 (defn misheyakir-11-deg [cal] (.getMisheyakir11Degrees cal))
+(defn alos-hashachar [cal] (.getAlosHashachar cal))
 (defn alos-72-min [cal] (.getAlos72 cal))
 (defn alos-16-1-deg [cal] (.getAlos16Point1Degrees cal))
 (defn sunrise [cal] (.getSunrise cal))
