@@ -3,7 +3,7 @@
   Kosher Java
   https://search.maven.org/artifact/com.kosherjava/zmanim
   "
-  (:require [clojure.pprint :as pp])
+  (:require)
   (:import (com.kosherjava.zmanim ComplexZmanimCalendar AstronomicalCalendar)
            (com.kosherjava.zmanim.util GeoLocation)
            (com.kosherjava.zmanim.hebrewcalendar JewishDate HebrewDateFormatter)))
@@ -12,7 +12,7 @@
   [l]
   (GeoLocation. (:locationName l) (:latitude l) (:longitude l) (:elevation l) (:time-zone l)))
 
-(defn make-zmanim-cal-by-location
+(defn zmanim-calendar-by-location
   [location]
   (ComplexZmanimCalendar. location))
 
@@ -36,32 +36,52 @@
   (let [frmt (HebrewDateFormatter.)]
     (format "%s-%s" (.formatMonth frmt heb-date) (.getJewishDayOfMonth heb-date))))
 
-(defn get-times-data
-  "cal - ZmanimCalendar or ComplexZmanimCalendar
-   day - [year month day]"
-  ([shitot cal]
-   (let [heb-date (JewishDate. (.getCalendar cal))]
-     {:location (->> cal .getGeoLocation .getLocationName)
-      :lat (->> cal .getGeoLocation .getLatitude)
-      :long (->> cal .getGeoLocation .getLongitude)
-      :algorithm (->> cal .getAstronomicalCalculator .getCalculatorName)
-      :date (->> (.getCalendar cal) .getTime) ;;used for presentation
-      :hebrew-date (->> heb-date) #_(->> cal .getDate)
-      :title->times (->> (map (fn [[idx [title shita]]]
-                                [idx [title (shita cal)]])
-                              shitot)
-                         (into (sorted-map)))}))
-  ([shitot cal day]
-   (set-calendar-time cal day)
-   (get-times-data shitot cal)))
+(defn- zmanim-by-date-and-calendar
+  "calendar - ZmanimCalendar or ComplexZmanimCalendar"
+  [calendar shitot]
+  (let [heb-date (JewishDate. (.getCalendar calendar))]
+    {:location (->> calendar .getGeoLocation .getLocationName)
+     :lat (->> calendar .getGeoLocation .getLatitude)
+     :long (->> calendar .getGeoLocation .getLongitude)
+     :algorithm (->> calendar .getAstronomicalCalculator .getCalculatorName)
+     :date (->> (.getCalendar calendar) .getTime) ;;used for presentation
+     :hebrew-date (->> heb-date) #_(->> calendar .getDate)
+     :title->times (->> (map-indexed (fn [idx [title shita]]
+                                       [(inc idx) [title (shita calendar)]])
+                                     shitot)
+                        (into (sorted-map)))}))
+
+(defn zmanim-by-today-and-location
+  [location shitot]
+  (let [calendar (zmanim-calendar-by-location (make-location location))]
+    (zmanim-by-date-and-calendar calendar shitot)))
+
+(defn zmanim-by-date-and-location
+  "date - [year month day]"
+  [location shitot date]
+  (let [calendar (zmanim-calendar-by-location (make-location location))]
+    (set-calendar-time calendar date)
+    (zmanim-by-date-and-calendar calendar shitot)))
+
+(defn zmanim-by-dates-and-location
+  [location shitot days]
+  (let [times-raw (map #(zmanim-by-date-and-location location shitot %) days)]
+    {:columns-titles (->> times-raw first :title->times vals (map first))
+     :zmanim (map #(select-keys % [:date :hebrew-date :title->times]) times-raw)
+     :meta-data (-> times-raw first
+                    (dissoc :title->times))}))
+
+(def zenith AstronomicalCalendar/GEOMETRIC_ZENITH)
 
 (defn misheyakir-10-2-deg [cal] (.getMisheyakir10Point2Degrees cal))
+(defn misheyakir-by-deg [deg cal] (.getSunriseOffsetByDegrees cal (+ zenith deg)))
 (defn misheyakir-11-deg [cal] (.getMisheyakir11Degrees cal))
 (defn alos-hashachar [cal] (.getAlosHashachar cal))
-(defn alos-72-min [cal] (.getAlos72 cal))
+(defn alos-72-min [cal] (.getAlos72 cal)) ;;kaluach Alot72eq
+(defn alos-72-min-zmanis [cal] (.getAlos72Zmanis cal)) ;;kaluach Alot72prop
 (defn alos-16-1-deg [cal] (.getAlos16Point1Degrees cal))
-(defn sunrise [cal] (.getSunrise cal))
-(defn sof-zman-shma-gra [cal] (.getSofZmanShmaGRA cal))
+(defn sunrise [cal] (.getSunrise cal)) ;;hanetz
+(defn sof-zman-shma-gra [cal] (.getSofZmanShmaGRA cal)) ;;3 shaot zmaniyot after sunrise
 (defn sof-zman-tfila-gra [cal] (.getSofZmanTfilaGRA cal))
 (defn chatzos [cal] (.getChatzos cal))
 (defn mincha-gedola-30-min [cal] (.getMinchaGedola30Minutes cal))
@@ -70,7 +90,14 @@
 (defn candle-lighting [cal] (.getCandleLighting cal))
 (defn sunset [cal] (.getSunset cal))
 (defn tzais-baal-hatanya [cal] (.getTzaisBaalHatanya cal))
-(defn shaah-zmanis-16-1-deg [cal] (.getShaahZmanis16Point1Degrees cal))
-(defn tzais-geonim-8-1-deg [cal] (.getSunsetOffsetByDegrees cal (+ 8.1 AstronomicalCalendar/GEOMETRIC_ZENITH)))
+(defn tzais-geonim-8-1-deg [cal] (.getSunsetOffsetByDegrees cal (+ zenith 8.1)))
 (defn tzais-geonim-8-5-deg [cal] (.getTzaisGeonim8Point5Degrees cal))
+(defn tzais-72-min [cal] (.getTzais72 cal))
+(defn tzais-72-min-zmanis [cal] (.getTzais72Zmanis cal))
+
+(defn shaah-zmanis-mga [cal] (.getShaahZmanisMGA cal))
+(defn shaah-zmanis-gra [cal] (.getShaahZmanisGra cal))
+(defn shaah-zmanis-16-1-deg [cal] (.getShaahZmanis16Point1Degrees cal))
+(defn shaah-zmanis-72-min [cal] (.getShaahZmanis72Minutes cal))
+(defn shaah-zmanis-72-min-zmanis [cal] (.getShaahZmanis72MinutesZmanis cal))
 

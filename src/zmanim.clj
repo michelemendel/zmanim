@@ -12,6 +12,8 @@
   (:import (java.util TimeZone)
            (java.text SimpleDateFormat)))
 
+(pp/pprint "zmanim")
+
 ;; --------------------------------------------------------------------------------
 ;; Date utils
 
@@ -45,128 +47,154 @@
   (for [d (range 1 (inc (nof-day-in-month y m)))]
     [y m d]))
 
-
 ;; --------------------------------------------------------------------------------
-;; Presentation utils
+;; Presentation
 
 ;;http://tutorials.jenkov.com/java-date-time/parsing-formatting-dates.html
-(defn present-key-val
-  [{:keys [algorithm location date hebrew-date title->times]}]
+(defn date-pp
+  [{:keys [algorithm location lat long date hebrew-date title->times]}]
   (let [frmt-day (SimpleDateFormat. "EEE yyyy-MM-dd")
         frmt-time (SimpleDateFormat. "HH:mm:ss")
         max-length (->> title->times vals
                         (map #(count (first %)))
-                        (apply max))]
+                        (apply max))
+        zmanim (fn [[idx [k v]]]
+                 (format (str "%2d. %-" max-length "s %s\n") idx k (when v (.format frmt-time v))))]
     (str (format "%s, %s, %s\n" location (k/frmt-full-heb-date hebrew-date) (.format frmt-day date))
+         (format "lat: %s, long: %s\n" lat long)
          (format "algorithm: %s\n" algorithm)
-         (reduce (fn [acc [idx [k v]]]
-                   (str acc (format (str "%2d. %-" max-length "s %s\n")
-                                    idx
-                                    k
-                                    (when v (.format frmt-time v)))))
-                 "" title->times))))
+         (->> (map zmanim title->times)
+              (str/join "")))))
 
-(defn- col-widths
+(defn- columns-widths
   [titles]
   ;; The width for the day and heb-date is added to the start of the vector
   (into [6 12] (map #(max (count %) 9) titles)))
 
-(defn zmanim-table-row-title
-  [frmt-str {:keys [location date hebrew-date titles]}]
+(defn- columns-frmt-pp
+  [{:keys [columns-titles] :as zmanim-by-dates}]
+  (str/join "" (map #(str "%-" % "s ") (columns-widths columns-titles))))
+
+(defn- columns-frmt-csv
+  [{:keys [columns-titles] :as zmanim-by-dates}]
+  (str/join "," (map (fn [_] (str "%-1s")) (columns-widths columns-titles))))
+
+(defn table-row-title
+  [frmt-str {:keys [location date hebrew-date lat long algorithm] :as meta-data} titles]
   (let [year (.format (SimpleDateFormat. "yyyy Z z") date)
         heb-year (k/frmt-heb-year hebrew-date)]
     (str (format "%s, %s, %s\n" location heb-year year)
+         (format "lat: %s, long: %s (algorithm: %s)\n" lat long algorithm)
          (apply format frmt-str (into ["date" "heb-date"] titles))
          "\n")))
 
-(defn zmanim-table-row
+(defn table-row
   [frmt-str {:keys [date hebrew-date title->times]}]
   (let [frmt-day (SimpleDateFormat. "MM-dd")
         frmt-time (SimpleDateFormat. "HH:mm:ss")
-        day (.format frmt-day date)
-        times (into [day (k/frmt-heb-month-day hebrew-date)] (->> title->times vals (map #(when (second %)
-                                                   (.format frmt-time (second %))))))]
+        date-MM-dd (.format frmt-day date)
+        hebrew-date-MMMM-dd (k/frmt-heb-month-day hebrew-date)
+        times (->> title->times
+                   vals
+                   (map #(when (second %)
+                           (.format frmt-time (second %))))
+                   (into [date-MM-dd hebrew-date-MMMM-dd]))
+        ]
     (str (apply format frmt-str times) "\n")))
 
-(defn zmanim-table
-  [shitot calendar days is-csv?]
-  (let [times-data (map #(k/get-times-data shitot calendar %) days)
-        titles (->> times-data first :title->times vals (map first))
-        meta-data (-> times-data first
-                      (dissoc :title->times)
-                      (assoc :titles titles))
-        lengths (col-widths titles)
-        frmt-str (if is-csv?
-                   (str/join "," (map (fn [_] (str "%-1s")) lengths))
-                   (str/join "" (map #(str "%-" % "s ") lengths)))
-        title (zmanim-table-row-title frmt-str meta-data)
-        times (reduce (fn [acc time]
-                        (str acc (zmanim-table-row frmt-str time)))
-                      "" times-data)]
-    (str title (str/join "" times))))
+(defn- dates-pretty-print
+  [columns-frmt {:keys [zmanim columns-titles meta-data] :as zmanim-by-dates}]
+  (let [title (table-row-title columns-frmt meta-data columns-titles)
+        times (->> zmanim
+                   (map #(table-row columns-frmt %))
+                   (str/join ""))]
+    (str title times)))
+
+(defn- dates-pp
+  [zmanim-by-dates]
+  (let [console-pp-frmt (columns-frmt-pp zmanim-by-dates)]
+    (dates-pretty-print console-pp-frmt zmanim-by-dates)))
+
+(defn dates-csv
+  [zmanim-by-dates]
+  (let [csv-frmt (columns-frmt-csv zmanim-by-dates)]
+    (dates-pretty-print csv-frmt (->> zmanim-by-dates))))
+
 
 ;; --------------------------------------------------------------------------------
 ;; Location specific data for Oslo
 
+;;The table from Benzy uses the coordinates of the shul:
+;;59.9257381288325, 10.743053827519505
 (def location-oslo {:locationName "Oslo, NO"
-                    :latitude 59.91387
-                    :longitude 10.75225
+                    :latitude #_59.91387 59.92573
+                    :longitude #_10.75225 10.74305
                     :elevation 0
                     :time-zone (TimeZone/getTimeZone "Europe/Oslo")})
 
 (def shitot-oslo
-  {1 ["mishey.10.2°" k/misheyakir-10-2-deg]
-   2 ["alot_72m" k/alos-72-min]
-   3 ["sunrise" k/sunrise]
-   4 ["sof_zman_shma_G" k/sof-zman-shma-gra]
-   5 ["sof_zman_tfila_G" k/sof-zman-tfila-gra]
-   6 ["chatzos" k/chatzos ".getChatzos"]
-   7 ["mincha_g.30m" k/mincha-gedola-30-min]
-   8 ["mincha_k.G" k/mincha-ketana]
-   9 ["plag_hamin.G" k/plag-hamincha]
-   10 ["candles_G" k/candle-lighting]
-   11 ["sunset" k/sunset]
-   12 ["tz.kr.shma_bh" k/tzais-baal-hatanya]
-   13 ["tz.motze_8.1°" k/tzais-geonim-8-1-deg]})
-
-(def shitot-oslo-kaluach-vs-java
-  {1 ["mishey.11°" k/misheyakir-11-deg]
-   2 ["alot_16.1°-kl" k/alos-16-1-deg]
-   3 ["alot_72m" k/alos-72-min]
-   4 ["tz.motze_8.5°-kl" k/tzais-geonim-8-5-deg]
-   5 ["tz.motze_8.1°" k/tzais-geonim-8-1-deg]})
+  [["mishey.10.2°" k/misheyakir-10-2-deg]
+   ["alot_72m" k/alos-72-min]
+   ["sunrise" k/sunrise]
+   ["sof_zman_shma_G" k/sof-zman-shma-gra] ;;3 shaot zmaniyot after sunrise
+   ["sof_zman_tfila_G" k/sof-zman-tfila-gra]
+   ["chatzos" k/chatzos ".getChatzos"]
+   ["mincha_g.30m" k/mincha-gedola-30-min]
+   ["mincha_k.G" k/mincha-ketana]
+   ["plag_hamin.G" k/plag-hamincha]
+   ["candles_G" k/candle-lighting]
+   ["sunset" k/sunset]
+   ["tz.kr.shma_bh" k/tzais-baal-hatanya]
+   ["tz.motze_8.1°" k/tzais-geonim-8-1-deg]])
 
 (def shitot-oslo-selected
-  {1 ["mishe_11°" k/misheyakir-11-deg]
-   2 ["alot_72m" k/alos-72-min]
-   3 ["sunrise" k/sunrise]
-   4 ["sunset" k/sunset]
-   5 ["tzet_8.1°" k/tzais-geonim-8-1-deg]})
-
+  [
+   ;;["mishe_11°" k/misheyakir-11-deg]
+   ["mishey.10.2°" k/misheyakir-10-2-deg]
+   ["mishey.10.2-v2°" (partial k/misheyakir-by-deg 10.4)]
+   ["alot_72m" k/alos-72-min]
+   ["alot_72m_zmanis" k/alos-72-min-zmanis]
+   ;;["alot_72m_zmanis" k/alos-72-min-zmanis]
+   ["sunrise" k/sunrise]
+   ;;["sof_zman_shma_G" k/sof-zman-shma-gra]
+   ;;["sunset" k/sunset]
+   ;;["tzet_8.1°" k/tzais-geonim-8-1-deg]
+   ;;["tzet_72m" k/tzais-72-min-zmanis]
+   ;;["tzet_72m_zm" k/tzais-72-min-zmanis]
+   ;;["sh.zm.mga" k/shaah-zmanis-mga]
+   ;;["sh.zm.72m_zm" k/shaah-zmanis-72-min-zmanis]
+   ])
 
 ;; --------------------------------------------------------------------------------
 ;; run app
 
 ;; Table
 (do
- (let [calendar (k/make-zmanim-cal-by-location (k/make-location location-oslo))
-       year 2022
-       table (zmanim-table shitot-oslo-selected
-                           calendar
-                           (all-days-by-year year)
-                           true)
-       filename (format "/Users/mendel/Downloads/zmanim_oslo_%s.txt" year)]
-   ;;(print table)
-   (spit filename table)
-   ))
+  (let [year 2022
+        ;;days (all-days-by-year year)
+        days [[2022 1 1] ;;7:40
+              [2022 3 1] ;;5:58
+              [2022 5 16] ;;1:56
+              [2022 5 19] ;;1:14
+              [2022 5 20] ;;1:14
+              ]
+        ;;days [[2022 6 24]]
+        zmanim-by-dates (k/zmanim-by-dates-and-location location-oslo shitot-oslo-selected days)
+        filename (format "/Users/mendel/Downloads/zmanim_oslo_%s.txt" year)]
+    (->> zmanim-by-dates
+         dates-pp
+         print
+         ;;(spit filename)
+         )))
 
 ;; Single day
 (comment
- (let [calendar (k/make-zmanim-cal-by-location (k/make-location location-oslo))]
-   ;;(print (present-key-val (k/get-times-data shitot-oslo calendar [2022 6 24])))
-   ;;(print (present-key-val (k/get-times-data shitot-oslo calendar)))
-   (k/get-times-data shitot-oslo calendar [2022 6 24])
-   ))
+ (clojure.pprint/pprint location-oslo)
+ (->> [2022 6 24]
+      (k/zmanim-by-date-and-location location-oslo shitot-oslo)
+      date-pp
+      ;;print
+      ))
 
 ;; --------------------------------------------------------------------------------
 ;; sandbox
