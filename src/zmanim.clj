@@ -149,18 +149,13 @@
 
 (def shitot-oslo-selected
   [
-   ;;["mishe_11°" k/misheyakir-11-deg]
-   ["mishey.10.2°" k/misheyakir-10-2-deg]
-   ["mishey.10.2-v2°" (partial k/misheyakir-by-deg 10.4)]
+   ["mishey_10.2°" k/misheyakir-10-2-deg]
    ["alot_72m" k/alos-72-min]
-   ["alot_72m_zmanis" k/alos-72-min-zmanis]
-   ;;["alot_72m_zmanis" k/alos-72-min-zmanis]
    ["sunrise" k/sunrise]
    ;;["sof_zman_shma_G" k/sof-zman-shma-gra]
-   ;;["sunset" k/sunset]
-   ;;["tzet_8.1°" k/tzais-geonim-8-1-deg]
-   ;;["tzet_72m" k/tzais-72-min-zmanis]
-   ;;["tzet_72m_zm" k/tzais-72-min-zmanis]
+   ["sunset" k/sunset]
+   ["tz.motze_8.1°" k/tzais-geonim-8-1-deg]
+   ["tz.motze_72°" k/tzais-72-min-zmanis]
    ;;["sh.zm.mga" k/shaah-zmanis-mga]
    ;;["sh.zm.72m_zm" k/shaah-zmanis-72-min-zmanis]
    ])
@@ -172,11 +167,17 @@
 (do
   (let [year 2022
         ;;days (all-days-by-year year)
-        days [[2022 1 1] ;;7:40
-              [2022 3 1] ;;5:58
-              [2022 5 16] ;;1:56
-              [2022 5 19] ;;1:14
-              [2022 5 20] ;;1:14
+        days [[2022 1 1]
+              [2022 3 1]
+              [2022 5 1]
+              [2022 5 19]
+              [2022 5 20]
+              [2022 5 30]
+              [2022 6 1]
+              [2022 6 20]
+              [2022 6 21]
+              [2022 6 22]
+              [2022 6 23]
               ]
         ;;days [[2022 6 24]]
         zmanim-by-dates (k/zmanim-by-dates-and-location location-oslo shitot-oslo-selected days)
@@ -190,7 +191,7 @@
 ;; Single day
 (comment
  (clojure.pprint/pprint location-oslo)
- (->> [2022 6 24]
+ (->> [2022 2 21]
       (k/zmanim-by-date-and-location location-oslo shitot-oslo)
       date-pp
       ;;print

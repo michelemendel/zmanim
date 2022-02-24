@@ -3,9 +3,8 @@
   Kosher Java
   https://search.maven.org/artifact/com.kosherjava/zmanim
   "
-  (:require)
   (:import (com.kosherjava.zmanim ComplexZmanimCalendar AstronomicalCalendar)
-           (com.kosherjava.zmanim.util GeoLocation)
+           (com.kosherjava.zmanim.util GeoLocation SunTimesCalculator NOAACalculator)
            (com.kosherjava.zmanim.hebrewcalendar JewishDate HebrewDateFormatter)))
 
 (defn make-location
@@ -14,7 +13,9 @@
 
 (defn zmanim-calendar-by-location
   [location]
-  (ComplexZmanimCalendar. location))
+  (let [calendar (ComplexZmanimCalendar. location)]
+    (.setUseElevation calendar true)
+    calendar))
 
 (defn set-calendar-time
   "Month is 1-based instead of zero, so don't use the built-in months, since they are zero-based"
@@ -40,12 +41,13 @@
   "calendar - ZmanimCalendar or ComplexZmanimCalendar"
   [calendar shitot]
   (let [heb-date (JewishDate. (.getCalendar calendar))]
-    {:location (->> calendar .getGeoLocation .getLocationName)
-     :lat (->> calendar .getGeoLocation .getLatitude)
-     :long (->> calendar .getGeoLocation .getLongitude)
-     :algorithm (->> calendar .getAstronomicalCalculator .getCalculatorName)
-     :date (->> (.getCalendar calendar) .getTime) ;;used for presentation
-     :hebrew-date (->> heb-date) #_(->> calendar .getDate)
+    {:location (-> calendar .getGeoLocation .getLocationName)
+     :lat (-> calendar .getGeoLocation .getLatitude)
+     :long (-> calendar .getGeoLocation .getLongitude)
+     :algorithm (.getCalculatorName (.getAstronomicalCalculator calendar))
+     ;;(-> calendar .getAstronomicalCalculator .getCalculatorName)
+     :date (-> calendar .getCalendar .getTime) ;;used for presentation
+     :hebrew-date heb-date
      :title->times (->> (map-indexed (fn [idx [title shita]]
                                        [(inc idx) [title (shita calendar)]])
                                      shitot)
@@ -60,6 +62,8 @@
   "date - [year month day]"
   [location shitot date]
   (let [calendar (zmanim-calendar-by-location (make-location location))]
+    ;;(.setAstronomicalCalculator calendar (NOAACalculator.)) ;;default
+    ;;(.setAstronomicalCalculator calendar (SunTimesCalculator.))
     (set-calendar-time calendar date)
     (zmanim-by-date-and-calendar calendar shitot)))
 
@@ -68,8 +72,7 @@
   (let [times-raw (map #(zmanim-by-date-and-location location shitot %) days)]
     {:columns-titles (->> times-raw first :title->times vals (map first))
      :zmanim (map #(select-keys % [:date :hebrew-date :title->times]) times-raw)
-     :meta-data (-> times-raw first
-                    (dissoc :title->times))}))
+     :meta-data (-> times-raw first (dissoc :title->times))}))
 
 (def zenith AstronomicalCalendar/GEOMETRIC_ZENITH)
 
@@ -77,7 +80,7 @@
 (defn misheyakir-by-deg [deg cal] (.getSunriseOffsetByDegrees cal (+ zenith deg)))
 (defn misheyakir-11-deg [cal] (.getMisheyakir11Degrees cal))
 (defn alos-hashachar [cal] (.getAlosHashachar cal))
-(defn alos-72-min [cal] (.getAlos72 cal)) ;;kaluach Alot72eq
+(defn alos-72-min [cal] (.getAlos72 cal)) ;;kaluach Alot72reg
 (defn alos-72-min-zmanis [cal] (.getAlos72Zmanis cal)) ;;kaluach Alot72prop
 (defn alos-16-1-deg [cal] (.getAlos16Point1Degrees cal))
 (defn sunrise [cal] (.getSunrise cal)) ;;hanetz
